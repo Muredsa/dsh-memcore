@@ -280,6 +280,7 @@ var MemCoreRuntime = class {
 	store;
 	agents = /* @__PURE__ */ new WeakMap();
 	enabled;
+	benchMetrics;
 	metrics = {
 		memoryQueries: 0,
 		memoryHits: 0,
@@ -519,26 +520,27 @@ var MemCoreRuntime = class {
 		});
 	}
 	installBenchMetrics() {
-		const bench = this.bench();
-		if (bench?.register === void 0) return;
-		bench.register({
-			name: "memcore",
-			metrics: [
-				"memory_queries",
-				"memory_hits",
-				"memory_misses",
-				"records_injected",
-				"memory_tokens",
-				"records_written",
-				"records_superseded",
-				"repeated_file_reads",
-				"repeated_searches",
-				"repeated_commands",
-				"duplicate_tool_calls"
-			].map((name$1) => ({
-				name: `memcore.${name$1}`,
-				description: `MemCore ${name$1.replaceAll("_", " ")}`
-			}))
+		this.ctx.inject(["benchMetrics"], (benchCtx) => {
+			this.benchMetrics = benchCtx.benchMetrics;
+			this.benchMetrics.register?.({
+				name: "memcore",
+				metrics: [
+					"memory_queries",
+					"memory_hits",
+					"memory_misses",
+					"records_injected",
+					"memory_tokens",
+					"records_written",
+					"records_superseded",
+					"repeated_file_reads",
+					"repeated_searches",
+					"repeated_commands",
+					"duplicate_tool_calls"
+				].map((name$1) => ({
+					name: `memcore.${name$1}`,
+					description: `MemCore ${name$1.replaceAll("_", " ")}`
+				}))
+			});
 		});
 	}
 	capture(scope, value, sourceKind, sourceRef) {
@@ -557,15 +559,9 @@ var MemCoreRuntime = class {
 			this.report("memcore.records_written");
 		}
 	}
-	bench() {
-		const byGet = this.ctx.get?.("benchMetrics");
-		const direct = this.ctx.benchMetrics;
-		const value = byGet ?? direct;
-		return typeof value === "object" && value !== null ? value : void 0;
-	}
 	report(name$1, value = 1) {
 		try {
-			this.bench()?.add?.(name$1, value);
+			this.benchMetrics?.add?.(name$1, value);
 		} catch {}
 	}
 	stateFor(agent) {

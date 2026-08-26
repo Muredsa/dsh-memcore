@@ -28,6 +28,7 @@ export class MemCoreRuntime {
   private readonly store: MemoryStore
   private readonly agents = new WeakMap<object, AgentState>()
   private enabled: boolean
+  private benchMetrics: { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void } | undefined
   private readonly metrics: MemCoreMetrics = {
     memoryQueries: 0,
     memoryHits: 0,
@@ -203,15 +204,18 @@ export class MemCoreRuntime {
   }
 
   private installBenchMetrics(): void {
-    const bench = this.bench()
-    if (bench?.register === undefined) return
-    bench.register({
-      name: 'memcore',
-      metrics: [
-        'memory_queries', 'memory_hits', 'memory_misses', 'records_injected', 'memory_tokens',
-        'records_written', 'records_superseded', 'repeated_file_reads', 'repeated_searches',
-        'repeated_commands', 'duplicate_tool_calls',
-      ].map(name => ({ name: `memcore.${name}`, description: `MemCore ${name.replaceAll('_', ' ')}` })),
+    this.ctx.inject(['benchMetrics'], (benchCtx) => {
+      // `benchMetrics` is read only in this injected child context. Ordinary
+      // profiles do not provide it, and then this callback simply never runs.
+      this.benchMetrics = benchCtx.benchMetrics as { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void }
+      this.benchMetrics.register?.({
+        name: 'memcore',
+        metrics: [
+          'memory_queries', 'memory_hits', 'memory_misses', 'records_injected', 'memory_tokens',
+          'records_written', 'records_superseded', 'repeated_file_reads', 'repeated_searches',
+          'repeated_commands', 'duplicate_tool_calls',
+        ].map(name => ({ name: `memcore.${name}`, description: `MemCore ${name.replaceAll('_', ' ')}` })),
+      })
     })
   }
 
@@ -233,15 +237,8 @@ export class MemCoreRuntime {
     }
   }
 
-  private bench(): { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void } | undefined {
-    const byGet = this.ctx.get?.('benchMetrics')
-    const direct = this.ctx.benchMetrics
-    const value = byGet ?? direct
-    return typeof value === 'object' && value !== null ? value as { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void } : undefined
-  }
-
   private report(name: string, value = 1): void {
-    try { this.bench()?.add?.(name, value) } catch { /* benchmarking must never interrupt an agent turn */ }
+    try { this.benchMetrics?.add?.(name, value) } catch { /* benchmarking must never interrupt an agent turn */ }
   }
 
   private stateFor(agent: object): AgentState {
