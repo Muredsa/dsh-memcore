@@ -57,6 +57,7 @@ interface MemCoreMetrics {
   memoryTokens: number;
   recordsWritten: number;
   recordsSuperseded: number;
+  recordsDeleted: number;
   repeatedFileReads: number;
   repeatedSearches: number;
   repeatedCommands: number;
@@ -101,6 +102,11 @@ interface RememberResult {
   readonly written: boolean;
   readonly superseded: boolean;
 }
+/** Result of removing one active record from future retrieval. */
+interface ForgetResult {
+  readonly record: MemoryRecord | undefined;
+  readonly deleted: boolean;
+}
 /** SQLite and FTS5-backed local store. It never contacts an external service. */
 declare class MemoryStore {
   private readonly db;
@@ -110,6 +116,8 @@ declare class MemoryStore {
   remember(input: RememberInput): RememberResult;
   /** Return one record, defaulting to the active version only. */
   get(id: string, includeHistory?: boolean): MemoryRecord | undefined;
+  /** Archive one active record in its owning scope so it is never retrieved again. */
+  forget(id: string, scope: string): ForgetResult;
   /** Search active records in a workspace and optional global namespace. */
   search(query: string, scopes: readonly string[], limit: number): RetrievedMemory[];
   /** Persist the local audit trail for one retrieval decision. */
@@ -137,4 +145,4 @@ declare const name = "dsh-memcore";
  */
 declare function apply(ctx: HarnessContext, config?: MemCoreConfig): void;
 //#endregion
-export { MEMCORE_SETTINGS_NAMESPACE, type MemCoreConfig, type MemCoreMetrics, type MemCoreSettings, MemCoreSettingsSchema, type MemoryKind, type MemoryRecord, MemoryStore, type RememberInput, type RetrievedMemory, apply, name };
+export { type ForgetResult, MEMCORE_SETTINGS_NAMESPACE, type MemCoreConfig, type MemCoreMetrics, type MemCoreSettings, MemCoreSettingsSchema, type MemoryKind, type MemoryRecord, MemoryStore, type RememberInput, type RetrievedMemory, apply, name };

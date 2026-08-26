@@ -47,4 +47,20 @@ describe('MemoryStore', () => {
     expect(records).toHaveLength(1)
     expect(records[0]?.scope).toBe('workspace:one')
   })
+
+  it('forgets only the active record in its owning scope', () => {
+    const store = createStore()
+    const record = store.remember({
+      scope: 'workspace:one', kind: 'semantic', value: 'The deprecated deployment is no longer used.', sourceKind: 'tool',
+    }).record
+
+    expect(store.forget(record.id, 'workspace:two')).toEqual({ record: undefined, deleted: false })
+
+    const forgotten = store.forget(record.id, 'workspace:one')
+    expect(forgotten.deleted).toBe(true)
+    expect(forgotten.record?.status).toBe('archived')
+    expect(store.get(record.id)).toBeUndefined()
+    expect(store.get(record.id, true)?.validUntil).toBeTruthy()
+    expect(store.search('deprecated deployment', ['workspace:one'], 8)).toEqual([])
+  })
 })

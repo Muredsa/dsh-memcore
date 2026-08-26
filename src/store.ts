@@ -34,6 +34,12 @@ export interface RememberResult {
   readonly superseded: boolean
 }
 
+/** Result of removing one active record from future retrieval. */
+export interface ForgetResult {
+  readonly record: MemoryRecord | undefined
+  readonly deleted: boolean
+}
+
 /** SQLite and FTS5-backed local store. It never contacts an external service. */
 export class MemoryStore {
   private readonly db: DatabaseSync
@@ -93,6 +99,31 @@ export class MemoryStore {
       includeHistory ? 'SELECT * FROM memory_records WHERE id = ?' : "SELECT * FROM memory_records WHERE id = ? AND status = 'active'",
     ).get(id) as MemoryRow | undefined
     return row === undefined ? undefined : toRecord(row)
+  }
+
+  /** Archive one active record in its owning scope so it is never retrieved again. */
+  forget(id: string, scope: string): ForgetResult {
+    const current = this.db.prepare(`
+      SELECT * FROM memory_records
+      WHERE id = ? AND scope = ? AND status = 'active'
+    `).get(id, scope) as MemoryRow | undefined
+    if (current === undefined) return { record: undefined, deleted: false }
+
+    const now = new Date().toISOString()
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.db.prepare(`
+        UPDATE memory_records
+        SET status = 'archived', valid_until = ?, updated_at = ?
+        WHERE id = ? AND scope = ? AND status = 'active'
+      `).run(now, now, id, scope)
+      this.db.prepare('DELETE FROM memory_fts WHERE id = ?').run(id)
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+    return { record: this.get(id, true), deleted: true }
   }
 
   /** Search active records in a workspace and optional global namespace. */

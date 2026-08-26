@@ -2,7 +2,7 @@ import { MemCoreRuntime, type HarnessContext } from './runtime.ts'
 import type { MemCoreConfig } from './types.ts'
 
 export { MEMCORE_SETTINGS_NAMESPACE, MemCoreSettingsSchema } from './config.ts'
-export { MemoryStore } from './store.ts'
+export { MemoryStore, type ForgetResult } from './store.ts'
 export type {
   MemCoreConfig, MemCoreMetrics, MemCoreSettings, MemoryKind, MemoryRecord, RememberInput, RetrievedMemory,
 } from './types.ts'

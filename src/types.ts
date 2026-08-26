@@ -60,6 +60,7 @@ export interface MemCoreMetrics {
   memoryTokens: number
   recordsWritten: number
   recordsSuperseded: number
+  recordsDeleted: number
   repeatedFileReads: number
   repeatedSearches: number
   repeatedCommands: number

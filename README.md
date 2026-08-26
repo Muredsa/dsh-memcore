@@ -29,7 +29,8 @@ In the Web interface, the `MemCore: on` button appears in the composer tool row 
 - Stores explicit facts, decisions, events, and procedures through model-visible `memcore_remember`.
 - Versions keyed facts: save a replacement using the same `key`, and the old record is marked superseded instead of deleted.
 - Rejects likely credentials and private keys from automatic and explicit capture.
-- Supplies `memcore_search`, `memcore_get`, and `memcore_stats` tools.
+- Supplies `memcore_search`, `memcore_get`, `memcore_remember`, `memcore_forget`, and `memcore_stats` tools.
+- Removes a record on an explicit user request through `memcore_forget`. It accepts only one exact record id in the current workspace, archives the record from future retrieval, and preserves its local version history.
 - Records local retrieval traces in SQLite and reports custom counters to `dsh-benchup` when it is loaded.
 - Counts duplicate tool calls, repeated file reads, searches, and commands for memory-efficiency benchmarks.
 
@@ -59,7 +60,7 @@ The default database is `.dsh/memcore.sqlite` under the profile's current worksp
 Pin a known revision for reproducible experiments:
 
 ```powershell
-dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.4
+dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.5
 ```
 
 To move to a newer release, repeat the command with its tag, then restart the profile. For development, clone this repository, run `pnpm install`, `pnpm test`, and `pnpm build`; commit `dist/` with a release so Git-based users receive the runnable plugin.
