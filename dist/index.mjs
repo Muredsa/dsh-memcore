@@ -302,6 +302,75 @@ function score(row, now) {
 
 //#endregion
 //#region src/runtime.ts
+const BENCH_METRICS = [
+	[
+		"memory_queries",
+		"count",
+		"Memory retrieval attempts."
+	],
+	[
+		"memory_hits",
+		"count",
+		"Retrieved records injected into a memory pack."
+	],
+	[
+		"memory_misses",
+		"count",
+		"Retrieval attempts with no active matching record."
+	],
+	[
+		"records_injected",
+		"count",
+		"Records injected into a model request."
+	],
+	[
+		"memory_tokens",
+		"tokens",
+		"Estimated tokens injected from memory."
+	],
+	[
+		"records_written",
+		"count",
+		"New memory records written."
+	],
+	[
+		"records_superseded",
+		"count",
+		"Active records replaced by keyed writes."
+	],
+	[
+		"records_deleted",
+		"count",
+		"Active records removed from future retrieval."
+	],
+	[
+		"repeated_file_reads",
+		"count",
+		"Repeated tool calls classified as file reads."
+	],
+	[
+		"repeated_searches",
+		"count",
+		"Repeated tool calls classified as searches."
+	],
+	[
+		"repeated_commands",
+		"count",
+		"Repeated tool calls classified as commands."
+	],
+	[
+		"duplicate_tool_calls",
+		"count",
+		"Mechanically identical repeated tool calls."
+	]
+].map(([suffix, unit, description]) => ({
+	name: `memcore.${suffix}`,
+	unit,
+	aggregation: "sum",
+	dimension: "diagnostic",
+	scope: "episode",
+	description
+}));
 /** Provider-neutral MemCore runtime installed into the DSH plugin lifecycle. */
 var MemCoreRuntime = class {
 	config;
@@ -578,29 +647,17 @@ var MemCoreRuntime = class {
 		});
 	}
 	installBenchMetrics() {
-		const candidate = this.ctx.get?.("benchMetrics");
-		if (typeof candidate !== "object" || candidate === null) return;
-		this.benchMetrics = candidate;
-		this.benchMetrics.register?.({
-			name: "memcore",
-			metrics: [
-				"memory_queries",
-				"memory_hits",
-				"memory_misses",
-				"records_injected",
-				"memory_tokens",
-				"records_written",
-				"records_superseded",
-				"records_deleted",
-				"repeated_file_reads",
-				"repeated_searches",
-				"repeated_commands",
-				"duplicate_tool_calls"
-			].map((name$1) => ({
-				name: `memcore.${name$1}`,
-				description: `MemCore ${name$1.replaceAll("_", " ")}`
-			}))
+		this.attachBenchMetrics(this.ctx.get?.("benchMetrics"));
+		this.ctx.on("internal/service", (name$1, candidate) => {
+			if (name$1 === "benchMetrics") this.attachBenchMetrics(candidate);
 		});
+	}
+	attachBenchMetrics(candidate) {
+		if (typeof candidate !== "object" || candidate === null || candidate === this.benchMetrics) return;
+		const metrics = candidate;
+		if (typeof metrics.add !== "function" || typeof metrics.register !== "function") return;
+		for (const definition of BENCH_METRICS) metrics.register(definition);
+		this.benchMetrics = metrics;
 	}
 	capture(scope, value, sourceKind, sourceRef) {
 		if (containsSensitiveValue(value)) return;

@@ -22,13 +22,51 @@ interface AgentState {
   readonly toolCalls: Map<string, number>
 }
 
+interface BenchMetricDefinition {
+  readonly name: string
+  readonly unit: 'count' | 'tokens'
+  readonly aggregation: 'sum'
+  readonly dimension: 'diagnostic'
+  readonly scope: 'episode'
+  readonly description: string
+}
+
+interface BenchMetricsService {
+  add?(name: string, value?: number): void
+  register?(definition: BenchMetricDefinition): void
+}
+
+const BENCH_METRIC_DETAILS: readonly (readonly [string, BenchMetricDefinition['unit'], string])[] = [
+  ['memory_queries', 'count', 'Memory retrieval attempts.'],
+  ['memory_hits', 'count', 'Retrieved records injected into a memory pack.'],
+  ['memory_misses', 'count', 'Retrieval attempts with no active matching record.'],
+  ['records_injected', 'count', 'Records injected into a model request.'],
+  ['memory_tokens', 'tokens', 'Estimated tokens injected from memory.'],
+  ['records_written', 'count', 'New memory records written.'],
+  ['records_superseded', 'count', 'Active records replaced by keyed writes.'],
+  ['records_deleted', 'count', 'Active records removed from future retrieval.'],
+  ['repeated_file_reads', 'count', 'Repeated tool calls classified as file reads.'],
+  ['repeated_searches', 'count', 'Repeated tool calls classified as searches.'],
+  ['repeated_commands', 'count', 'Repeated tool calls classified as commands.'],
+  ['duplicate_tool_calls', 'count', 'Mechanically identical repeated tool calls.'],
+]
+
+const BENCH_METRICS: readonly BenchMetricDefinition[] = BENCH_METRIC_DETAILS.map(([suffix, unit, description]) => ({
+  name: `memcore.${suffix}`,
+  unit,
+  aggregation: 'sum',
+  dimension: 'diagnostic',
+  scope: 'episode',
+  description,
+}))
+
 /** Provider-neutral MemCore runtime installed into the DSH plugin lifecycle. */
 export class MemCoreRuntime {
   private readonly config: ReturnType<typeof resolveConfig>
   private readonly store: MemoryStore
   private readonly agents = new WeakMap<object, AgentState>()
   private enabled: boolean
-  private benchMetrics: { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void } | undefined
+  private benchMetrics: BenchMetricsService | undefined
   private readonly metrics: MemCoreMetrics = {
     memoryQueries: 0,
     memoryHits: 0,
@@ -226,18 +264,20 @@ export class MemCoreRuntime {
   private installBenchMetrics(): void {
     // `get()` is Cordis' documented optional-service lookup. Reading the
     // property directly needs an inject declaration and makes a normal Web
-    // profile fail when dsh-benchup is not installed.
-    const candidate = this.ctx.get?.('benchMetrics')
-    if (typeof candidate !== 'object' || candidate === null) return
-    this.benchMetrics = candidate as { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void }
-    this.benchMetrics.register?.({
-      name: 'memcore',
-      metrics: [
-        'memory_queries', 'memory_hits', 'memory_misses', 'records_injected', 'memory_tokens',
-        'records_written', 'records_superseded', 'records_deleted', 'repeated_file_reads', 'repeated_searches',
-        'repeated_commands', 'duplicate_tool_calls',
-      ].map(name => ({ name: `memcore.${name}`, description: `MemCore ${name.replaceAll('_', ' ')}` })),
+    // profile wait forever when dsh-benchup is not installed. `internal/service`
+    // covers BenchUp's temporary observer, which is loaded after profile bundles.
+    this.attachBenchMetrics(this.ctx.get?.('benchMetrics'))
+    this.ctx.on('internal/service', (name: string, candidate: unknown) => {
+      if (name === 'benchMetrics') this.attachBenchMetrics(candidate)
     })
+  }
+
+  private attachBenchMetrics(candidate: unknown): void {
+    if (typeof candidate !== 'object' || candidate === null || candidate === this.benchMetrics) return
+    const metrics = candidate as BenchMetricsService
+    if (typeof metrics.add !== 'function' || typeof metrics.register !== 'function') return
+    for (const definition of BENCH_METRICS) metrics.register(definition)
+    this.benchMetrics = metrics
   }
 
   private capture(scope: string, value: string, sourceKind: string, sourceRef: string): void {
