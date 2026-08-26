@@ -34,7 +34,7 @@ In the Web interface, the `MemCore: on` button appears in the composer tool row 
 - Records local retrieval traces in SQLite and reports custom counters to `dsh-benchup` when it is loaded.
 - Counts duplicate tool calls, repeated file reads, searches, and commands for memory-efficiency benchmarks.
 
-Automatic capture is intentionally conservative. It recognizes explicit memory/decision language; it does not blindly store tool output, website text, or every conversation message as trusted memory.
+Automatic capture is intentionally conservative. It recognizes explicitly labelled user facts and a structured file-read declaration containing both `key:` and `memory:` lines; it does not blindly store arbitrary tool output, website text, or every conversation message as trusted memory.
 
 ## Configuration
 
@@ -60,7 +60,7 @@ The default database is `.dsh/memcore.sqlite` under the profile's current worksp
 Pin a known revision for reproducible experiments:
 
 ```powershell
-dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.6
+dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.7
 ```
 
 To move to a newer release, repeat the command with its tag, then restart the profile. For development, clone this repository, run `pnpm install`, `pnpm test`, and `pnpm build`; commit `dist/` with a release so Git-based users receive the runnable plugin.

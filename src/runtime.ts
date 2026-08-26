@@ -123,8 +123,9 @@ export class MemCoreRuntime {
       const message = textFrom(payload.message)
       if (message === '') return
       state.query = message
-      if (this.enabled && this.config.captureEnabled && shouldCapture(message)) {
-        this.capture(state.scope, message, 'user-message', `turn:${String(payload.turn ?? '')}`)
+      const explicitMemory = explicitUserMemory(message)
+      if (this.enabled && this.config.captureEnabled && explicitMemory !== undefined) {
+        this.capture(state.scope, explicitMemory, 'user-message', `turn:${String(payload.turn ?? '')}`)
       }
     })
     this.ctx.on('system-prompt/assemble', async (assembly: UnknownRecord, context: UnknownRecord, next: () => Promise<unknown>) => {
@@ -154,14 +155,22 @@ export class MemCoreRuntime {
       this.report('memcore.memory_tokens', pack.tokens)
       return settled
     })
-    this.ctx.on('tools/result', (execution: UnknownRecord) => {
+    this.ctx.on('tools/result', (execution: UnknownRecord, result: unknown) => {
       const agent = objectOf(execution.agent)
       if (agent === undefined) return
       const state = this.stateFor(agent)
       const name = stringOf(execution.name) ?? stringOf(objectOf(execution.tool)?.name) ?? 'unknown'
-      const signature = `${name}:${stableJson(execution.args)}`
+      const argumentsValue = execution.arguments ?? execution.args
+      const signature = `${name}:${stableJson(argumentsValue)}`
       const previous = state.toolCalls.get(signature) ?? 0
       state.toolCalls.set(signature, previous + 1)
+      if (this.enabled && this.config.captureEnabled && !toolResultIsError(result) && isReadTool(name)) {
+        const lines = resultLines(result)
+        if (lines.length > 0) state.query = lines.join('\n')
+        for (const declared of declaredMemories(lines)) {
+          this.capture(state.scope, declared.value, 'tool-result', `call:${String(execution.callId ?? '')}`, declared.key)
+        }
+      }
       if (previous === 0) return
       this.metrics.duplicateToolCalls += 1
       this.report('memcore.duplicate_tool_calls')
@@ -280,12 +289,12 @@ export class MemCoreRuntime {
     this.benchMetrics = metrics
   }
 
-  private capture(scope: string, value: string, sourceKind: string, sourceRef: string): void {
+  private capture(scope: string, value: string, sourceKind: string, sourceRef: string, memoryKey?: string): void {
     if (containsSensitiveValue(value)) return
     const result = this.store.remember({
       scope,
       kind: 'semantic',
-      memoryKey: stableKey(value),
+      memoryKey: memoryKey ?? stableKey(value),
       value: cleanText(value),
       confidence: 0.65,
       importance: 0.75,
@@ -358,9 +367,47 @@ function renderPack(records: readonly { id: string; kind: string; value: string 
   }
 }
 
-/** Automatic capture is deliberately narrow; everything else requires the explicit tool. */
-function shouldCapture(value: string): boolean {
-  return value.length >= 24 && /\b(?:remember|decision|decided|important|current|production|use .* instead)\b|(?:запомни|решили|важно|текущий|продакшн|используем)/iu.test(value)
+/** Extract a user fact only when its line explicitly labels it as memory-like data. */
+function explicitUserMemory(value: string): string | undefined {
+  const match = value.match(/^\s*(?:memcore\s+)?(?:memory|fact|decision|память|факт|решение)\s*:\s*(.+?)\s*$/imu)
+  return match === null ? undefined : cleanText(match[1]!)
+}
+
+/** Identify read-like tools whose returned text can refine the next retrieval query. */
+function isReadTool(name: string): boolean {
+  return /(?:^|[-_])(?:read|open|cat)(?:[-_]|$)|file/iu.test(name)
+}
+
+/** Read line-oriented text exposed by DSH's structured file-reading tools. */
+function resultLines(value: unknown): string[] {
+  const meta = objectOf(objectOf(value)?.meta)
+  const lines = Array.isArray(meta?.lines) ? meta.lines : []
+  return lines.flatMap((line) => {
+    const text = stringOf(objectOf(line)?.text)
+    return text === undefined ? [] : [cleanText(text)]
+  }).filter(Boolean)
+}
+
+/** Identify conservative key/value memory declarations in a structured tool result. */
+function declaredMemories(lines: readonly string[]): Array<{ key: string; value: string }> {
+  let key: string | undefined
+  const records: Array<{ key: string; value: string }> = []
+  for (const line of lines) {
+    const keyMatch = line.match(/^\s*key\s*:\s*(.+?)\s*$/iu)
+    if (keyMatch !== null) key = cleanText(keyMatch[1]!, 200)
+    const valueMatch = line.match(/^\s*memory\s*:\s*(.+?)\s*$/iu)
+    if (valueMatch !== null && key !== undefined && key !== '') {
+      const value = cleanText(valueMatch[1]!)
+      if (value !== '') records.push({ key, value })
+      key = undefined
+    }
+  }
+  return records
+}
+
+/** Check a final tool outcome without coupling MemCore to DSH's result type. */
+function toolResultIsError(value: unknown): boolean {
+  return objectOf(value)?.isError === true
 }
 
 function compactRecord(record: { id: string; kind: string; memoryKey: string | null; value: string; updatedAt: string }): object {

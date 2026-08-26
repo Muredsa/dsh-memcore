@@ -437,7 +437,8 @@ var MemCoreRuntime = class {
 			const message = textFrom(payload.message);
 			if (message === "") return;
 			state.query = message;
-			if (this.enabled && this.config.captureEnabled && shouldCapture(message)) this.capture(state.scope, message, "user-message", `turn:${String(payload.turn ?? "")}`);
+			const explicitMemory = explicitUserMemory(message);
+			if (this.enabled && this.config.captureEnabled && explicitMemory !== void 0) this.capture(state.scope, explicitMemory, "user-message", `turn:${String(payload.turn ?? "")}`);
 		});
 		this.ctx.on("system-prompt/assemble", async (assembly, context, next) => {
 			const settled = await next();
@@ -469,14 +470,19 @@ var MemCoreRuntime = class {
 			this.report("memcore.memory_tokens", pack.tokens);
 			return settled;
 		});
-		this.ctx.on("tools/result", (execution) => {
+		this.ctx.on("tools/result", (execution, result) => {
 			const agent = objectOf(execution.agent);
 			if (agent === void 0) return;
 			const state = this.stateFor(agent);
 			const name$1 = stringOf(execution.name) ?? stringOf(objectOf(execution.tool)?.name) ?? "unknown";
-			const signature = `${name$1}:${stableJson(execution.args)}`;
+			const signature = `${name$1}:${stableJson(execution.arguments ?? execution.args)}`;
 			const previous = state.toolCalls.get(signature) ?? 0;
 			state.toolCalls.set(signature, previous + 1);
+			if (this.enabled && this.config.captureEnabled && !toolResultIsError(result) && isReadTool(name$1)) {
+				const lines = resultLines(result);
+				if (lines.length > 0) state.query = lines.join("\n");
+				for (const declared of declaredMemories(lines)) this.capture(state.scope, declared.value, "tool-result", `call:${String(execution.callId ?? "")}`, declared.key);
+			}
 			if (previous === 0) return;
 			this.metrics.duplicateToolCalls += 1;
 			this.report("memcore.duplicate_tool_calls");
@@ -659,12 +665,12 @@ var MemCoreRuntime = class {
 		for (const definition of BENCH_METRICS) metrics.register(definition);
 		this.benchMetrics = metrics;
 	}
-	capture(scope, value, sourceKind, sourceRef) {
+	capture(scope, value, sourceKind, sourceRef, memoryKey) {
 		if (containsSensitiveValue(value)) return;
 		if (this.store.remember({
 			scope,
 			kind: "semantic",
-			memoryKey: stableKey(value),
+			memoryKey: memoryKey ?? stableKey(value),
 			value: cleanText(value),
 			confidence: .65,
 			importance: .75,
@@ -745,9 +751,45 @@ function renderPack(records, budget) {
 		tokens
 	};
 }
-/** Automatic capture is deliberately narrow; everything else requires the explicit tool. */
-function shouldCapture(value) {
-	return value.length >= 24 && /\b(?:remember|decision|decided|important|current|production|use .* instead)\b|(?:запомни|решили|важно|текущий|продакшн|используем)/iu.test(value);
+/** Extract a user fact only when its line explicitly labels it as memory-like data. */
+function explicitUserMemory(value) {
+	const match = value.match(/^\s*(?:memcore\s+)?(?:memory|fact|decision|память|факт|решение)\s*:\s*(.+?)\s*$/imu);
+	return match === null ? void 0 : cleanText(match[1]);
+}
+/** Identify read-like tools whose returned text can refine the next retrieval query. */
+function isReadTool(name$1) {
+	return /(?:^|[-_])(?:read|open|cat)(?:[-_]|$)|file/iu.test(name$1);
+}
+/** Read line-oriented text exposed by DSH's structured file-reading tools. */
+function resultLines(value) {
+	const meta = objectOf(objectOf(value)?.meta);
+	return (Array.isArray(meta?.lines) ? meta.lines : []).flatMap((line) => {
+		const text = stringOf(objectOf(line)?.text);
+		return text === void 0 ? [] : [cleanText(text)];
+	}).filter(Boolean);
+}
+/** Identify conservative key/value memory declarations in a structured tool result. */
+function declaredMemories(lines) {
+	let key;
+	const records = [];
+	for (const line of lines) {
+		const keyMatch = line.match(/^\s*key\s*:\s*(.+?)\s*$/iu);
+		if (keyMatch !== null) key = cleanText(keyMatch[1], 200);
+		const valueMatch = line.match(/^\s*memory\s*:\s*(.+?)\s*$/iu);
+		if (valueMatch !== null && key !== void 0 && key !== "") {
+			const value = cleanText(valueMatch[1]);
+			if (value !== "") records.push({
+				key,
+				value
+			});
+			key = void 0;
+		}
+	}
+	return records;
+}
+/** Check a final tool outcome without coupling MemCore to DSH's result type. */
+function toolResultIsError(value) {
+	return objectOf(value)?.isError === true;
 }
 function compactRecord(record) {
 	return {
