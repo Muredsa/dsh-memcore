@@ -1,0 +1,5 @@
+# MemCore is enabled by default. Its Web client half is discovered from the
+# same package and adds a live on/off switch to the composer toolbar.
+- insert:
+    - id: memcore
+      name: dsh-memcore
