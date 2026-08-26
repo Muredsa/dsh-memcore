@@ -1,6 +1,6 @@
 {
   "name": "dsh-memcore",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Provider-neutral external memory for DeepSeek Harness",
   "license": "MIT",
   "type": "module",
@@ -12,8 +12,7 @@
       "default": "./dist/index.mjs"
     },
     "./client": {
-      "types": "./dist/client.d.mts",
-      "default": "./dist/client.mjs"
+      "default": "./dist/client.js"
     },
     "./package.json": "./package.json"
   },
