@@ -204,18 +204,19 @@ export class MemCoreRuntime {
   }
 
   private installBenchMetrics(): void {
-    this.ctx.inject(['benchMetrics'], (benchCtx) => {
-      // `benchMetrics` is read only in this injected child context. Ordinary
-      // profiles do not provide it, and then this callback simply never runs.
-      this.benchMetrics = benchCtx.benchMetrics as { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void }
-      this.benchMetrics.register?.({
-        name: 'memcore',
-        metrics: [
-          'memory_queries', 'memory_hits', 'memory_misses', 'records_injected', 'memory_tokens',
-          'records_written', 'records_superseded', 'repeated_file_reads', 'repeated_searches',
-          'repeated_commands', 'duplicate_tool_calls',
-        ].map(name => ({ name: `memcore.${name}`, description: `MemCore ${name.replaceAll('_', ' ')}` })),
-      })
+    // `get()` is Cordis' documented optional-service lookup. Reading the
+    // property directly needs an inject declaration and makes a normal Web
+    // profile fail when dsh-benchup is not installed.
+    const candidate = this.ctx.get?.('benchMetrics')
+    if (typeof candidate !== 'object' || candidate === null) return
+    this.benchMetrics = candidate as { add?: (name: string, value?: number) => void; register?: (spec: unknown) => void }
+    this.benchMetrics.register?.({
+      name: 'memcore',
+      metrics: [
+        'memory_queries', 'memory_hits', 'memory_misses', 'records_injected', 'memory_tokens',
+        'records_written', 'records_superseded', 'repeated_file_reads', 'repeated_searches',
+        'repeated_commands', 'duplicate_tool_calls',
+      ].map(name => ({ name: `memcore.${name}`, description: `MemCore ${name.replaceAll('_', ' ')}` })),
     })
   }
 

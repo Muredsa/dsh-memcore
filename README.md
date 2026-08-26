@@ -59,7 +59,7 @@ The default database is `.dsh/memcore.sqlite` under the profile's current worksp
 Pin a known revision for reproducible experiments:
 
 ```powershell
-dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.3
+dsh plugin --profile web add github:Muredsa/dsh-memcore#v0.1.4
 ```
 
 To move to a newer release, repeat the command with its tag, then restart the profile. For development, clone this repository, run `pnpm install`, `pnpm test`, and `pnpm build`; commit `dist/` with a release so Git-based users receive the runnable plugin.

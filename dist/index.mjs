@@ -520,27 +520,27 @@ var MemCoreRuntime = class {
 		});
 	}
 	installBenchMetrics() {
-		this.ctx.inject(["benchMetrics"], (benchCtx) => {
-			this.benchMetrics = benchCtx.benchMetrics;
-			this.benchMetrics.register?.({
-				name: "memcore",
-				metrics: [
-					"memory_queries",
-					"memory_hits",
-					"memory_misses",
-					"records_injected",
-					"memory_tokens",
-					"records_written",
-					"records_superseded",
-					"repeated_file_reads",
-					"repeated_searches",
-					"repeated_commands",
-					"duplicate_tool_calls"
-				].map((name$1) => ({
-					name: `memcore.${name$1}`,
-					description: `MemCore ${name$1.replaceAll("_", " ")}`
-				}))
-			});
+		const candidate = this.ctx.get?.("benchMetrics");
+		if (typeof candidate !== "object" || candidate === null) return;
+		this.benchMetrics = candidate;
+		this.benchMetrics.register?.({
+			name: "memcore",
+			metrics: [
+				"memory_queries",
+				"memory_hits",
+				"memory_misses",
+				"records_injected",
+				"memory_tokens",
+				"records_written",
+				"records_superseded",
+				"repeated_file_reads",
+				"repeated_searches",
+				"repeated_commands",
+				"duplicate_tool_calls"
+			].map((name$1) => ({
+				name: `memcore.${name$1}`,
+				description: `MemCore ${name$1.replaceAll("_", " ")}`
+			}))
 		});
 	}
 	capture(scope, value, sourceKind, sourceRef) {
